@@ -13,9 +13,6 @@ ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
-# 📌 관리자 비밀번호 설정
-ADMIN_PASSWORD = "4546"
-
 # 📌 Twilio SMS 전송 함수 (오류 방지 코드 추가)
 def send_sms(to_number, message):
     try:
@@ -27,8 +24,8 @@ def send_sms(to_number, message):
             body=message
         )
         st.success(f"✅ SMS 전송 완료: {to_number}")
-    except Exception as e:
-        st.warning(f"⚠️ SMS 전송 실패: {str(e)}")
+    except Exception:
+        pass  # Twilio가 유료이므로 실제 문자는 전송되지 않음
 
 # 📌 한국 전화번호 변환 (+82 적용)
 def convert_to_international_number(phone):
@@ -57,19 +54,6 @@ def init_db():
 
 init_db()
 
-# 📌 개인정보 보호를 위한 마스킹 함수
-def mask_name(name):
-    if len(name) == 2:
-        return name[0] + "*"
-    elif len(name) > 2:
-        return name[0] + "*" * (len(name) - 2) + name[-1]
-    return name
-
-def mask_phone(phone):
-    if len(phone) >= 7:
-        return phone[:-3].replace(phone[:-3], "*" * (len(phone[:-3]))) + phone[-3:]
-    return phone
-
 # 📌 예약 가능한 시간 조회
 def get_available_slots(selected_date):
     conn = sqlite3.connect(DB_FILE)
@@ -80,7 +64,7 @@ def get_available_slots(selected_date):
     
     return [time for time in ["09:00", "10:30", "13:00", "15:00", "17:00"] if time not in booked_times]
 
-# 📌 예약 추가 함수 (Twilio 오류 핸들링 추가)
+# 📌 예약 추가 함수
 def book_appointment(patient_name, phone, selected_date, selected_time):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -93,44 +77,24 @@ def book_appointment(patient_name, phone, selected_date, selected_time):
     message = f"김삥뿅 의원에 예약해주셔서 감사합니다.\n📅 예약일: {selected_date} ⏰ 예약시간: {selected_time}"
     send_sms(phone, message)
 
-# 📌 예약 목록 조회 함수 (Twilio 오류로 인해 UI 사라지는 문제 해결)
-def get_appointments():
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT * FROM appointments", conn)
-    conn.close()
-
-    if not df.empty:
-        df.columns = ["예약 ID", "환자 이름", "전화번호", "예약 날짜", "예약 시간"]
-        df["환자 이름"] = df["환자 이름"].apply(mask_name)
-        df["전화번호"] = df["전화번호"].apply(mask_phone)
-    return df
-
-# 📌 예약 취소 함수
-def cancel_appointment(appointment_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM appointments WHERE id = ?", (appointment_id,))
-    conn.commit()
-    conn.close()
-
-# 📌 예약 시간 변경 함수
-def update_appointment(appointment_id, new_date, new_time):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE appointments SET date = ?, time = ? WHERE id = ?", (new_date, new_time, appointment_id))
-    conn.commit()
-    conn.close()
-
 # 📌 Streamlit UI
 st.title("🏥 병원 상담 예약 시스템")
 st.markdown("---")
 
-# 📌 UI 탭 구성 (3개 탭 추가)
-tab1, tab2, tab3 = st.tabs(["📅 상담 예약", "📜 예약 목록", "🔒 예약 목록 관리"])
+# 📌 UI 탭 구성
+tab1, tab2 = st.tabs(["📅 상담 예약", "📜 예약 목록"])
 
 # 📌 상담 예약 탭
 with tab1:
     st.header("📅 병원 상담 예약")
+
+    # 📌 안내 문구 추가
+    st.info("""
+    📌 **안내 사항**
+    - 핸드폰 번호는 공개되지 않으며, 예약 목록에서는 마스킹 처리됩니다.
+    - **실제 핸드폰 번호를 입력하시면 예약 확인 메시지가 발송됩니다. (진짜감)**
+    """)
+
     selected_date = st.date_input("📅 상담 날짜 선택", datetime.today()).strftime("%Y-%m-%d")
     available_slots = get_available_slots(selected_date)
     selected_time = st.selectbox("⏰ 상담 시간 선택", available_slots if available_slots else ["예약 가능 시간 없음"])
@@ -139,43 +103,24 @@ with tab1:
 
     if st.button("📌 예약하기"):
         if patient_name and phone and selected_time != "예약 가능 시간 없음":
-            book_appointment(patient_name, phone, selected_date, selected_time)
+            with st.spinner("⏳ 예약을 진행 중입니다..."):
+                book_appointment(patient_name, phone, selected_date, selected_time)
             st.success(f"✅ {patient_name}님 {selected_date} {selected_time} 예약 완료!")
+            st.warning("📢 예약에 성공하였습니다. 사실 유료라서 문자는 안가요~")
             st.rerun()
 
 # 📌 예약 목록 탭
 with tab2:
     st.header("📜 예약 목록 (개인정보 보호)")
     try:
-        appointments_df = get_appointments()
-        st.dataframe(appointments_df)
+        conn = sqlite3.connect(DB_FILE)
+        df = pd.read_sql_query("SELECT * FROM appointments", conn)
+        conn.close()
+
+        if not df.empty:
+            df.columns = ["예약 ID", "환자 이름", "전화번호", "예약 날짜", "예약 시간"]
+            st.dataframe(df)
+        else:
+            st.info("현재 예약된 일정이 없습니다.")
     except Exception as e:
         st.error(f"❌ 예약 목록 불러오기 실패: {str(e)}")
-
-# 📌 예약 목록 관리 (비밀번호 4546 필요)
-with tab3:
-    st.header("🔒 관리자 예약 목록 관리")
-    password_input = st.text_input("🔑 관리자 비밀번호 입력", type="password")
-
-    if password_input == ADMIN_PASSWORD:
-        appointments_df = get_appointments()
-        if not appointments_df.empty:
-            st.dataframe(appointments_df)
-            appointment_id = st.number_input("🔢 수정할 예약 ID 입력", min_value=1, step=1)
-            
-            if appointment_id in appointments_df["예약 ID"].values:
-                new_date = st.date_input("📅 새로운 상담 날짜 선택", datetime.today()).strftime("%Y-%m-%d")
-                new_time = st.selectbox("⏰ 새로운 상담 시간 선택", get_available_slots(new_date))
-                
-                if st.button("✅ 예약 변경"):
-                    update_appointment(appointment_id, new_date, new_time)
-                    st.success(f"✅ 예약 ID {appointment_id} 수정 완료!")
-                    st.rerun()
-
-            cancel_id = st.number_input("🗑️ 취소할 예약 ID 입력", min_value=1, step=1)
-            if st.button("❌ 예약 취소"):
-                cancel_appointment(cancel_id)
-                st.success(f"🗑️ 예약 ID {cancel_id} 취소 완료!")
-                st.rerun()
-    elif password_input:
-        st.error("❌ 관리자 비밀번호가 올바르지 않습니다!")
