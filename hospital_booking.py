@@ -3,7 +3,6 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
-from twilio.rest import Client
 import re
 from dotenv import load_dotenv
 
@@ -36,6 +35,21 @@ def init_db():
 
 init_db()
 
+# 📌 개인정보 보호를 위한 마스킹 함수
+def mask_name(name):
+    """ 이름의 중간 글자를 '*'로 변경 """
+    if len(name) == 2:
+        return name[0] + "*"
+    elif len(name) > 2:
+        return name[0] + "*" * (len(name) - 2) + name[-1]
+    return name
+
+def mask_phone(phone):
+    """ 전화번호의 마지막 3자리를 제외하고 '*'로 마스킹 """
+    if len(phone) >= 7:
+        return phone[:-3].replace(phone[:-3], "*" * (len(phone[:-3]))) + phone[-3:]
+    return phone
+
 # 📌 예약 목록 조회 함수 (개인정보 보호 적용)
 def get_appointments():
     conn = sqlite3.connect(DB_FILE)
@@ -44,6 +58,8 @@ def get_appointments():
 
     if not df.empty:
         df.columns = ["예약 ID", "환자 이름", "전화번호", "예약 날짜", "예약 시간"]
+        df["환자 이름"] = df["환자 이름"].apply(mask_name)
+        df["전화번호"] = df["전화번호"].apply(mask_phone)
     return df
 
 # 📌 예약 취소 함수
@@ -83,7 +99,9 @@ with tab1:
     if st.button("📌 예약하기"):
         if patient_name and phone and selected_time:
             st.success(f"✅ {patient_name}님 {selected_date} {selected_time} 예약 완료!")
-            st.toast("📢 예약에 성공하였습니다. 뻥입니다. 사실 문자는 유료라서 문자는 안가요~", icon="💬")
+
+            # 📌 예약 완료 메시지를 본문 아래쪽으로 이동
+            st.warning("📢 예약에 성공하였습니다. 뻥입니다. 사실 문자는 유료라서 문자는 안가요~")
 
 # 📌 예약 목록 탭
 with tab2:
