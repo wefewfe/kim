@@ -83,7 +83,7 @@ with tab1:
     if st.button("📌 예약하기"):
         if patient_name and phone and selected_time:
             st.success(f"✅ {patient_name}님 {selected_date} {selected_time} 예약 완료!")
-            st.toast("📢 예약에 성공하였습니다. 사실 유료라서 문자는 안가요~", icon="💬")
+            st.toast("📢 예약에 성공하였습니다. 뻥입니다. 사실 문자는 유료라서 문자는 안가요~", icon="💬")
 
 # 📌 예약 목록 탭
 with tab2:
